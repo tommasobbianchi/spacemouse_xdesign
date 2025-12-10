@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SpaceMouse Bridge Config</title>
+    <style>
+        :root {
+            --bg: #121212;
+            --surface: #1e1e1e;
+            --primary: #bb86fc;
+            --text: #e0e0e0;
+            --input-bg: #2c2c2c;
+            --border: #333;
+            --success: #03dac6;
+            --error: #cf6679;
+        }
+
+        body {
+            background-color: var(--bg);
+            color: var(--text);
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: flex-start;
+            min-height: 100vh;
+            margin: 0;
+            padding: 20px;
+        }
+
+        .container {
+            background-color: var(--surface);
+            padding: 30px;
+            border-radius: 12px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+            width: 100%;
+            max-width: 500px;
+        }
+
+        h1 {
+            margin-top: 0;
+            color: var(--primary);
+            font-size: 1.5rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .status {
+            font-size: 0.8rem;
+            padding: 4px 8px;
+            border-radius: 4px;
+            background: #333;
+            color: #888;
+        }
+
+        .status.connected {
+            background: rgba(3, 218, 198, 0.2);
+            color: var(--success);
+        }
+
+        .status.error {
+            background: rgba(207, 102, 121, 0.2);
+            color: var(--error);
+        }
+
+        .section {
+            margin-bottom: 24px;
+        }
+
+        .section h2 {
+            font-size: 1.1rem;
+            margin-bottom: 12px;
+            border-bottom: 1px solid var(--border);
+            padding-bottom: 8px;
+        }
+
+        .form-group {
+            margin-bottom: 16px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 6px;
+            font-size: 0.9rem;
+            color: #aaa;
+        }
+
+        input,
+        select {
+            width: 100%;
+            padding: 10px;
+            background: var(--input-bg);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            color: var(--text);
+            font-size: 1rem;
+            box-sizing: border-box;
+        }
+
+        input:focus {
+            outline: none;
+            border-color: var(--primary);
+        }
+
+        button {
+            width: 100%;
+            padding: 12px;
+            background: var(--primary);
+            color: #000;
+            border: none;
+            border-radius: 6px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: opacity 0.2s;
+        }
+
+        button:hover {
+            opacity: 0.9;
+        }
+
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .toast {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            background: var(--surface);
+            border: 1px solid var(--primary);
+            padding: 12px 20px;
+            border-radius: 8px;
+            transform: translateY(100px);
+            transition: transform 0.3s;
+        }
+
+        .toast.show {
+            transform: translateY(0);
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="container">
+        <h1>Config <span id="status" class="status">Disconnected</span></h1>
+
+        <div class="section">
+            <h2>Custom Buttons (1-4)</h2>
+            <div id="buttons-container">
+                <!-- Injected by JS -->
+                <p>Loading config...</p>
+            </div>
+        </div>
+
+        <div class="section">
+            <h2>Settings</h2>
+            <div class="form-group">
+                <label>Spin Axis</label>
+                <select id="spin_axis">
+                    <option value="x">X (Pitch)</option>
+                    <option value="y">Y (Roll)</option>
+                    <option value="z">Z (Spin)</option>
+                </select>
+            </div>
+        </div>
+
+        <button id="save-btn" onclick="saveConfig()" disabled>Save configuration</button>
+    </div>
+
+    <div id="toast" class="toast">Saved!</div>
+
+    <script>
+        // WAMP constants
+        const WAMP = { WELCOME: 0, CALL: 2, CALLRESULT: 3, EVENT: 8 };
+        let socket = null;
+        let sessionId = null;
+        let currentConfig = null;
+        let rpcCallbacks = {};
+
+        function connect() {
+            const statusEl = document.getElementById('status');
+            socket = new WebSocket('wss://localhost:8181', ['wamp']);
+
+            socket.onopen = () => {
+                statusEl.textContent = 'Connected';
+                statusEl.className = 'status connected';
+                // Wait for WELCOME
+            };
+
+            socket.onmessage = (event) => {
+                const data = JSON.parse(event.data);
+                handleWamp(data);
+            };
+
+            socket.onclose = () => {
+                statusEl.textContent = 'Disconnected';
+                statusEl.className = 'status error';
+                document.getElementById('save-btn').disabled = true;
+                setTimeout(connect, 2000);
+            };
+        }
+
+        function handleWamp(data) {
+            const type = data[0];
+            if (type === WAMP.WELCOME) {
+                sessionId = data[1];
+                // Call config.get
+                rpc('config.get').then(config => {
+                    currentConfig = config;
+                    renderConfig();
+                    document.getElementById('save-btn').disabled = false;
+                });
+            } else if (type === WAMP.CALLRESULT) {
+                const callId = data[1];
+                const result = data[2];
+                if (rpcCallbacks[callId]) {
+                    rpcCallbacks[callId].resolve(result);
+                    delete rpcCallbacks[callId];
+                }
+            }
+        }
+
+        function rpc(method, ...args) {
+            return new Promise((resolve, reject) => {
+                const callId = Math.random().toString(36).substring(7);
+                const msg = [WAMP.CALL, callId, method, ...args];
+                rpcCallbacks[callId] = { resolve, reject };
+                socket.send(JSON.stringify(msg));
+            });
+        }
+
+        function renderConfig() {
+            if (!currentConfig) return;
+
+            // Spin Axis
+            document.getElementById('spin_axis').value = currentConfig.spin_axis || 'z';
+
+            // Buttons 1-4
+            const container = document.getElementById('buttons-container');
+            container.innerHTML = '';
+
+            // Ensure buttons 1-4 exist in loop, but mapped to IDs 0-3
+            for (let i = 1; i <= 4; i++) {
+                const logicalId = i;
+                const configId = String(i - 1); // Physical 1 is ID 0, etc.
+
+                const btnData = currentConfig.buttons[configId] || { action: 'key', value: '', description: '' };
+
+                const div = document.createElement('div');
+                div.className = 'form-group';
+                div.innerHTML = `
+                <label>Button ${logicalId} (${btnData.description || 'Custom'})</label>
+                <input type="text" id="btn-${configId}" value="${btnData.value}" placeholder="e.g. g, ctrl+z, space">
+            `;
+                container.appendChild(div);
+            }
+        }
+
+        function saveConfig() {
+            if (!currentConfig) return;
+
+            // Update local object
+            currentConfig.spin_axis = document.getElementById('spin_axis').value;
+
+            for (let i = 1; i <= 4; i++) {
+                const configId = String(i - 1);
+                const val = document.getElementById(`btn-${configId}`).value;
+
+                if (!currentConfig.buttons[configId]) {
+                    currentConfig.buttons[configId] = { action: 'key', description: `Custom ${i}` };
+                }
+                currentConfig.buttons[configId].value = val;
+                currentConfig.buttons[configId].action = 'key'; // Force key mode for simplicity
+
+                // Update description to match logical button
+                currentConfig.buttons[configId].description = `Custom ${i}`;
+            }
+
+            // Send RPC
+            const btn = document.getElementById('save-btn');
+            btn.textContent = 'Saving...';
+            btn.disabled = true;
+
+            rpc('config.set', currentConfig).then(res => {
+                btn.textContent = 'Save configuration';
+                btn.disabled = false;
+                showToast();
+            });
+        }
+
+        function showToast() {
+            const el = document.getElementById('toast');
+            el.className = 'toast show';
+            setTimeout(() => el.className = 'toast', 2000);
+        }
+
+        connect();
+    </script>
+
+</body>
+
+</html>

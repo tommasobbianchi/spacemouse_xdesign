@@ -1,0 +1,17 @@
+[Unit]
+Description=3DConnexion SpaceMouse Bridge for xDesign
+After=network.target
+Conflicts=spacenav-ws.service
+
+[Service]
+Type=simple
+User=tommaso
+WorkingDirectory=/run/media/tommaso/App/dev/spacemouse_xdesign/spacemouse_bridge
+Environment=DISPLAY=:0
+Environment=XAUTHORITY=/home/tommaso/.Xauthority
+ExecStart=/usr/bin/python3 main.py
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=default.target
