@@ -39,5 +39,10 @@ A professional, standalone bridge connecting 3DConnexion SpaceMouse devices to S
     -   Press the **Menu** button on your SpaceMouse to open the Configuration UI.
     -   Access manually at `https://localhost:8181/config`.
 
-## Architecture
+### Desktop Integration (Optional)
+To add a "SpaceMouse xDesign" launcher to your application menu (with a cool icon):
+```bash
+./install.sh
+```
+Right-click the icon to Start/Stop/Restart the background service easily.
 The bridge operates as a WebSocket (WAMP) server that translates raw `spacenav` events into application-specific RPC calls. It uses `uinput` for keyboard simulation and infers the active desktop environment to launch GUI tools correctly.
