@@ -1,0 +1,7 @@
+[Desktop Entry]
+Type=Application
+Name=SpaceMouse Tray
+Exec=/usr/bin/python3 /run/media/tommaso/App/dev/spacemouse_xdesign/spacemouse_bridge/tray.py
+Icon=/run/media/tommaso/App/dev/spacemouse_xdesign/spacemouse_bridge/assets/icon.png
+Comment=System Tray for SpaceMouse Bridge
+X-GNOME-Autostart-enabled=true

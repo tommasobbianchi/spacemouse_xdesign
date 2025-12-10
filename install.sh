@@ -40,7 +40,14 @@ Name=Stop Service
 Exec=systemctl --user stop spacemouse-bridge.service
 EOF
 
+# Install Tray Autostart
+TRAY_SRC="$APP_DIR/spacemouse-tray.desktop"
+TRAY_DEST="$HOME/.config/autostart/spacemouse-tray.desktop"
+echo "Installing Tray Autostart to $TRAY_DEST..."
+mkdir -p "$HOME/.config/autostart"
+cp "$TRAY_SRC" "$TRAY_DEST"
+
 # Refresh DB
 update-desktop-database "$HOME/.local/share/applications" 2>/dev/null
 
-echo "Done! You can now find 'SpaceMouse xDesign' in your app grid."
+echo "Done! 'SpaceMouse xDesign' app and Tray Indicator installed."
