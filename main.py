@@ -1,5 +1,6 @@
 import asyncio
 import json
+import math
 import os
 import logging
 import http
@@ -51,11 +52,10 @@ event_queue = asyncio.Queue()
 # Load Configuration
 CONFIG_PATH = "config.json"
 DEFAULT_CONFIG = {
-    "sensitivity": {
-        "translation": 0.00015,
-        "rotation": 0.01,
-        "zoom": 0.00003
-    },
+    "sensitivity": 1.0,
+    "deadzone": 10,
+    "gamma": 1.0,
+    "spin_axis": "z", # or 'y'
     "buttons": {}
 }
 
@@ -200,75 +200,6 @@ class Controller:
                 self.focus = props["focus"]
                 logging.info(f"Client Focus changed to: {self.focus}")
 
-    async def remote_read(self, property_name):
-        """Read a property from the client via RPC."""
-        # Try full URI: "3dconnexion:3dcontroller/controller0:read" ?
-        # Or just "read" ?
-        # spacenav-ws uses "self:read" which relies on prefixes.
-        # "self" -> "3dconnexion:3dcontroller/controller0"
-        
-        # Let's try explicit full, but properly formatted.
-        # If I am 'controller0', and I want to call 'read' on myself (the client mirror):
-        # The client might have registered "3dconnexion:3dcontroller/controller0#read" ??
-        
-        # Let's try just "read" first, as "self:read" failed.
-        # Wait, if I am the controller, the client called CREATE on me.
-        # The client is the "caller" usually. 
-        # But here server calls client.
-        
-        # Let's try:
-        return await self.client_rpc("read", property_name)
-
-    async def remote_write(self, property_name, value):
-        """Write a property to the client via RPC."""
-        return await self.client_rpc("write", property_name, value)
-
-    async def client_rpc(self, method, *args):
-        """
-        Execute an RPC on the client.
-        Structure matches spacenav-ws:
-        WAMP EVENT [8, topic, payload]
-        Payload is a serialized WAMP CALL [2, callID, method, args] WITH MSG_TYPE included.
-        """
-        if not self.subscribed_topic:
-            return None
-
-        call_id = _rand_id()
-        loop = asyncio.get_running_loop()
-        future = loop.create_future()
-        self.in_flight_rpcs[call_id] = future
-
-        # Construct Call: [2, callID, method, args...]
-        # spacenav-ws: call.serialize_with_msg_id() -> [2, call_id, proc_uri, *args]
-        # args passed here are already a list in *args tuple
-        # But we need to be careful about nesting.
-        # method="self:read", args=("view.affine",)
-        
-        # Correct structure: [2, call_id, method, arg1, arg2...]
-        # NOT [2, call_id, method, [args]]
-        call_msg = [WAMP_CALL, call_id, method, *args]
-        
-        # Wrap in Event: [8, topic, payload]
-        # Payload IS the call message list
-        event_msg = [WAMP_EVENT, self.subscribed_topic, call_msg]
-        
-        try:
-            # logging.debug(f"Sending RPC: {event_msg}")
-            await self.ws.send(json.dumps(event_msg))
-            # Wait for result with a timeout
-            result = await asyncio.wait_for(future, timeout=1.0)
-            return result
-        except asyncio.TimeoutError:
-            logging.error(f"RPC Timed out: {method}")
-            if call_id in self.in_flight_rpcs:
-                del self.in_flight_rpcs[call_id]
-            return None
-        except Exception as e:
-            logging.error(f"RPC Failed: {e}")
-            if call_id in self.in_flight_rpcs:
-                del self.in_flight_rpcs[call_id]
-            return None
-
     def resolve_rpc(self, call_id, result, error=None):
         if call_id in self.in_flight_rpcs:
             future = self.in_flight_rpcs[call_id]
@@ -329,80 +260,65 @@ class Controller:
     #     # Placeholder for XAUTHORITY discovery
     #     pass
 
-    async def process_motion(self, event):
-        # ACTIVE CONTROL MODE
-        # We try to read/write camera properties.
+    def apply_gamma(self, val, gamma):
+        """
+        Applies non-linear response curve.
+        Formula: value = sign * (|value| / max_range) ^ gamma * max_range
+        Assumes max_range approx 350.0 for SpaceMouse.
+        """
+        if val == 0: return 0
+        MAX_RANGE = 350.0
         
-        if not self.focus:
-            # Force focus just in case
-            self.focus = True
-            
-        if not self.subscribed_topic:
-            return
+        # Normalize
+        norm = abs(val) / MAX_RANGE
+        # Clamp to 1.0 to avoid explosion if driver reports > 350
+        if norm > 1.0: norm = 1.0
+        
+        # Curve
+        curved = pow(norm, gamma)
+        
+        # Denormalize
+        return math.copysign(curved * MAX_RANGE, val)
 
-        # 1. Read current state
-        try:
-            # We assume these properties exist on the client (Onshape-like)
-            perspective = await self.remote_read("view.perspective")
-            
-            # Affine matrix (4x4 flattened)
-            affine_data = await self.remote_read("view.affine")
-            if not affine_data:
-                return
-            
-            curr_affine = np.asarray(affine_data, dtype=np.float32).reshape(4, 4)
-            
-            # 2. Calculate Rotation (Restore missing block)
-            # Transpose of top-left 3x3
-            R_cam = curr_affine[:3, :3].T
-            # Orthogonalize using SVD to correct drift
-            U, _, Vt = np.linalg.svd(R_cam)
-            R_ortho = U @ Vt
-            
-            # Ensure determinant is +1 (Rotation) not -1 (Reflection)
-            if np.linalg.det(R_ortho) < 0:
-                # Flip the last row of Vt (or column of U)
-                Vt[-1, :] *= -1
-                R_ortho = U @ Vt
-                
-            R_cam = R_ortho
-            model_extents = await self.remote_read("model.extents") or [0,0,0,0,0,0]
+    async def process_motion(self, event):
+        """Handle motion events (6-DOF)."""
+        # Spacenavd events:
+        # motion.x, motion.y, motion.z
+        # motion.rx, motion.ry, motion.rz
+        # Values are typically related to device range, e.g. -350 to +350
+        
+        # Get Config
+        global APP_CONFIG
+        scale_speed = APP_CONFIG.get("sensitivity", 1.0)
+        deadzone = APP_CONFIG.get("deadzone", 10)
+        gamma = APP_CONFIG.get("gamma", 1.0)
+        
+        # Raw Data
+        t = event.motion
+        tx, ty, tz = t.x, t.y, t.z
+        rx, ry, rz = t.rx, t.ry, t.rz
+        
+        # Apply Deadzone & Gamma
+        def process_axis(val):
+            if abs(val) < deadzone: return 0
+            return self.apply_gamma(val, gamma)
 
-            # Calculate Pivot (Model Center in World Space)
-            min_pt = np.array(model_extents[0:3], dtype=np.float32)
-            max_pt = np.array(model_extents[3:6], dtype=np.float32)
-            pivot_world = (min_pt + max_pt) * 0.5
-            
-            # Pivot in Camera Space (View Matrix * Pivot_World)
-            # View Matrix is curr_affine (assumed Col-Major in GL, but NumPy is Row-Major? 
-            # xDesign sends Row-Major: [R0, R1, R2, 0, R4, R5... Tx, Ty, Tz, 1] ?
-            # `curr_affine` shape is (4,4).
-            # We treat it as: Point_Cam = Point_World @ curr_affine
-            
-            pivot_world_h = np.append(pivot_world, 1.0) # Homogeneous
-            pivot_cam = pivot_world_h @ curr_affine
-            
-            # Distance from Camera (Origin 0,0,0) to Pivot
-            dist = np.linalg.norm(pivot_cam[:3])
-            
-            # Adaptive Speed
-            # Base speed multiplier. We need to tune this.
-            # If dist is 100mm, we want speed ~ 100 * k.
-            # Previously constant scale was 0.0005. 
-            # Let's say typical distance is 100-500 units.
-            # If dist=200, 200 * k = 0.0005 -> k = 2.5e-6
-            # Lets try multiplying the constant scale by (dist / reference_dist)
-            # Reference distance = 100 units?
-            
-            # Clamp distance to avoid locking up when super close
-            dist = max(dist, 1.0) 
-            
-            # New Scaling logic
-            # trans_scale = 0.0005 * (dist / 100.0)
-            # Effective: 5.0e-6 * dist
-            # User reported "really slow". Increasing by 10x to 5.0e-5
-            
-            adaptive_scale = APP_CONFIG["sensitivity"]["translation"] * dist
+        tx = process_axis(tx)
+        ty = process_axis(ty)
+        tz = process_axis(tz)
+        rx = process_axis(rx)
+        ry = process_axis(ry)
+        rz = process_axis(rz)
+        
+        # Scale Factors (tuned for xDesign)
+        # Translation: Map +/- 350 to +/- 100 units approx
+        trans_scale = (scale_speed * 0.5) / 350.0
+        
+        # Rotation: Map +/- 350 to degrees
+        rot_scale = (scale_speed * 10.0) / 350.0 
+        
+        # Use simple adaptive scale if needed
+        adaptive_scale = APP_CONFIG["sensitivity"]["translation"] * dist
             
             # Usually rotation is angle-based, so constant is fine.
             # User reported Y/Z rotation "not working". Likely too slow.
