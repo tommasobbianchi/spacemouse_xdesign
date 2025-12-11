@@ -3,7 +3,7 @@
 This directory contains the manifest for building the SpaceMouse Bridge as a Flatpak.
 
 ## Prerequisites
-1.  **Flatpak Builder**: `sudo apt install flatpak-builder` (or equivalent).
+16.  **Flatpak Builder**: `sudo pacman -S flatpak-builder` (or equivalent).
 2.  **Flatpak Pip Generator**:
     ```bash
     wget https://raw.githubusercontent.com/flatpak/flatpak-builder-tools/master/pip/flatpak-pip-generator

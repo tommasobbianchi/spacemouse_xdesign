@@ -27,7 +27,7 @@ modules:
     sources:
       - type: archive
         url: https://github.com/FreeSpacenav/libspnav/archive/refs/tags/v1.1.tar.gz
-        sha256: 6b567b45f948a60429443c7270381628178665f8087702812739328229411985
+        sha256: 04b297f68a10db4fa40edf68d7f823ba7b9d0442f2b665181889abe2cea42759
 
   # 2. Python Dependencies
   # (Instructions: generate this using flatpak-pip-generator)

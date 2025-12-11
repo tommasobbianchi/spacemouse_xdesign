@@ -50,7 +50,16 @@ event_queue = asyncio.Queue()
 # Environment Fix for xdotool (GUI interaction)
 
 # Load Configuration
-CONFIG_PATH = "config.json"
+def get_config_dir():
+    xdg_config = os.environ.get('XDG_CONFIG_HOME', os.path.join(os.path.expanduser('~'), '.config'))
+    config_dir = os.path.join(xdg_config, 'spacemouse-bridge')
+    os.makedirs(config_dir, exist_ok=True)
+    return config_dir
+
+CONFIG_DIR = get_config_dir()
+CONFIG_PATH = os.path.join(CONFIG_DIR, "config.json")
+CERT_FILE = os.path.join(CONFIG_DIR, "cert.pem")
+KEY_FILE = os.path.join(CONFIG_DIR, "key.pem")
 DEFAULT_CONFIG = {
     "sensitivity": 1.0,
     "deadzone": 10,
@@ -724,7 +733,7 @@ async def broadcast_loop():
             await asyncio.gather(*tasks)
 
 
-def ensure_ssl_certs(cert_file="cert.pem", key_file="key.pem"):
+def ensure_ssl_certs(cert_file, key_file):
     """
     Checks for existence of SSL certs. If missing, generates a self-signed cert
     using OpenSSL to allow the WSS server to start securely.
@@ -755,10 +764,15 @@ async def main():
     
     init_environment()
     
-    ensure_ssl_certs()
+    ensure_ssl_certs(CERT_FILE, KEY_FILE)
 
     ssl_context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
-    ssl_context.load_cert_chain(certfile="cert.pem", keyfile="key.pem")
+    try:
+        ssl_context.load_cert_chain(certfile=CERT_FILE, keyfile=KEY_FILE)
+    except FileNotFoundError:
+        logging.error(f"Cert files not found at {CERT_FILE}, {KEY_FILE}")
+        raise
+
 
     server = await websockets.serve(
         handle_websocket, "0.0.0.0", 8181, ssl=ssl_context,

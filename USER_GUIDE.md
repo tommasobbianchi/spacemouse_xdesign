@@ -9,7 +9,9 @@ This guide explains how to install, configure, and use the SpaceMouse Bridge to 
 1.  **Hardware**: 3DConnexion SpaceMouse (any model).
 2.  **Driver**: `spacenavd` must be installed and running.
     ```bash
-    sudo apt install spacenavd
+    # Arch Linux (Manjaro)
+    sudo pacman -S libspnav
+    # Install spacenavd from AUR or ensure it is running
     sudo systemctl enable --now spacenavd
     ```
 3.  **Permissions**: Your user must have access to `uinput` for keyboard shortcuts.
@@ -46,7 +48,7 @@ Since this app is not yet on Flathub, you must build it locally. This runs the a
 
 1.  **Install Builder Tools**:
     ```bash
-    sudo apt install flatpak flatpak-builder git
+    sudo pacman -S flatpak flatpak-builder git base-devel
     ```
 
 2.  **Get the Pip Generator** (Required to freeze Python dependencies):
