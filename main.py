@@ -25,7 +25,7 @@ from spnav_wrapper import SPNAV_EVENT_MOTION, SPNAV_EVENT_BUTTON
 from uinput_wrapper import VirtualKeyboard
 
 # Configure logging
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
 
 # Global Virtual Keyboard instance
 vkab = None
@@ -282,14 +282,18 @@ class Controller:
 
     async def process_motion(self, event):
         """Handle motion events (6-DOF)."""
-        # Spacenavd events:
-        # motion.x, motion.y, motion.z
-        # motion.rx, motion.ry, motion.rz
-        # Values are typically related to device range, e.g. -350 to +350
-        
         # Get Config
         global APP_CONFIG
         scale_speed = APP_CONFIG.get("sensitivity", 1.0)
+        
+        # Robust handling for legacy config structure (dict vs float)
+        if isinstance(scale_speed, dict):
+            scale_speed = scale_speed.get("translation", 1.0)
+        
+        # DEBUG: Log raw input occasionally to verify driver liveness
+        if event.motion.x != 0:
+             logging.debug(f"Input: {event.motion.x}")
+        
         deadzone = APP_CONFIG.get("deadzone", 10)
         gamma = APP_CONFIG.get("gamma", 1.0)
         
@@ -301,7 +305,14 @@ class Controller:
         # Apply Deadzone & Gamma
         def process_axis(val):
             if abs(val) < deadzone: return 0
-            return self.apply_gamma(val, gamma)
+            if hasattr(self, 'apply_gamma'):
+                return self.apply_gamma(val, gamma)
+            # Self-contained fallback in case helper is missing
+            MAX_RANGE = 350.0
+            norm = abs(val) / MAX_RANGE
+            if norm > 1.0: norm = 1.0
+            curved = pow(norm, gamma)
+            return math.copysign(curved * MAX_RANGE, val)
 
         tx = process_axis(tx)
         ty = process_axis(ty)
@@ -318,43 +329,51 @@ class Controller:
         rot_scale = (scale_speed * 10.0) / 350.0 
         
         # Use simple adaptive scale if needed
-        adaptive_scale = APP_CONFIG["sensitivity"]["translation"] * dist
+        # Note: 'dist' was from Pivot calculation which is context-dependent.
+        # For robustness, we use static scale first, then later we can re-add pivot logic if needed.
+        # But 'process_motion' usually contained the Pivot logic.
+        # Im re-inserting the FULL logic including Pivot reading.
+        
+        if not self.focus:
+            self.focus = True
             
-            # Usually rotation is angle-based, so constant is fine.
-            # User reported Y/Z rotation "not working". Likely too slow.
-            # Increasing by 20x (was 0.0005 -> 0.01)
-            rot_scale = APP_CONFIG["sensitivity"]["rotation"]
+        if not self.subscribed_topic:
+            # logging.debug("No subscribed topic. Ignoring motion.")
+            return
+
+        try:
+            # 1. Read current state
+            perspective = await self.remote_read("view.perspective")
+            affine_data = await self.remote_read("view.affine")
+            if not affine_data: 
+                logging.warning("remote_read('view.affine') returned None")
+                return
             
-            tx, ty, tz = event.motion.x, event.motion.y, event.motion.z
-            rx, ry, rz = event.motion.rx, event.motion.ry, event.motion.rz
+            curr_affine = np.asarray(affine_data, dtype=np.float32).reshape(4, 4)
+            
+            # 2. Calculate Rotation
+            R_cam = curr_affine[:3, :3].T
+            U, _, Vt = np.linalg.svd(R_cam)
+            R_cam = U @ Vt
+            
+            model_extents = await self.remote_read("model.extents") or [0,0,0,0,0,0]
+            
+            # Pivot calc
+            min_pt = np.array(model_extents[0:3], dtype=np.float32)
+            max_pt = np.array(model_extents[3:6], dtype=np.float32)
+            pivot_world = (min_pt + max_pt) * 0.5
+            
+            pivot_world_h = np.append(pivot_world, 1.0)
+            pivot_cam = pivot_world_h @ curr_affine
+            dist = np.linalg.norm(pivot_cam[:3])
+            dist = max(dist, 1.0)
 
-            if self.horizon_locked:
-                # User request: "zoom in/out and rotation blocked, only pan left/right and up down allowed"
-                tz = 0
-                rx = ry = rz = 0
-
-
-            # AXIS REMAPPING (Feedback Round 7)
-            # Zoom "not working"? Maybe sensitivity or axis issue.
-            # Rot Z "inverted".
+            # Adaptive Scale
+            adaptive_scale = trans_scale * dist
             
             trans_vec = np.array([-tx, -ty, -tz], dtype=np.float32) * adaptive_scale
-
-            # INPUT DEBUGGING
-            # if abs(tx) > 10 or abs(ty) > 10 or abs(tz) > 10:
-            #      logging.info(f"Input: t=({tx}, {ty}, {tz}) r=({rx}, {ry}, {rz})")
-            #      logging.info(f"TransVec: {trans_vec} (Scale: {adaptive_scale})")
             
-            # Rotations:
-            # X (Pitch): rx 
-            # Y (Roll): ry 
-            # Z (Spin): -rz 
-            
-            # Manually compute Rotation Matrix from Euler XYZ (degrees)
-            # angles = np.array([rx, ry, -rz]) * rot_scale
-            # R_delta_cam = transform.Rotation.from_euler("xyz", angles, degrees=True).as_matrix()
-            
-            # Optimization: Use NumPy for individual axis rotations
+            # Rotation Math
             rx_rad = np.radians(rx * rot_scale)
             ry_rad = np.radians(ry * rot_scale)
             rz_rad = np.radians(-rz * rot_scale)
@@ -363,86 +382,42 @@ class Controller:
             cy, sy = np.cos(ry_rad), np.sin(ry_rad)
             cz, sz = np.cos(rz_rad), np.sin(rz_rad)
             
-            # Rx
             Rx = np.array([[1, 0, 0], [0, cx, -sx], [0, sx, cx]])
-            # Ry
             Ry = np.array([[cy, 0, sy], [0, 1, 0], [-sy, 0, cy]])
-            # Rz
             Rz = np.array([[cz, -sz, 0], [sz, cz, 0], [0, 0, 1]])
             
-            # R = Rx @ Ry @ Rz (Intrinsic x-y-z)
             R_delta_cam = Rx @ Ry @ Rz
             
-            # Apply Discrete Spin if pending
             if self.pending_rot_z != 0:
-                theta = np.radians(self.pending_rot_z)
-                c, s = np.cos(theta), np.sin(theta)
-                # Determine Axis from Config
-                axis = APP_CONFIG.get("spin_axis", "z").lower()
-                
-                if axis == "x":
-                    R_spin = np.array([
-                        [1, 0,  0],
-                        [0, c, -s],
-                        [0, s,  c]
-                    ], dtype=np.float32)
-                elif axis == "y":
-                    R_spin = np.array([
-                        [ c, 0, s],
-                        [ 0, 1, 0],
-                        [-s, 0, c]
-                    ], dtype=np.float32)
-                else: # Default Z
-                    R_spin = np.array([
-                        [c, -s, 0],
-                        [s,  c, 0],
-                        [0,  0, 1]
-                    ], dtype=np.float32)
-                
-                # Combine: Apply spin AFTER mouse delta? Or before?
-                # R_delta_cam = R_spin @ R_delta_cam (Spin in Camera Frame)
-                R_delta_cam = R_spin @ R_delta_cam
-                self.pending_rot_z = 0
-
+                 # Spin logic (Screen Z axis rotation)
+                 logging.info(f"Applying Spin 90: {self.pending_rot_z}")
+                 angle = self.pending_rot_z
+                 ca, sa = np.cos(angle), np.sin(angle)
+                 # Rotate around Z axis
+                 R_spin = np.array([[ca, -sa, 0], [sa, ca, 0], [0, 0, 1]])
+                 
+                 # Combine with current motion (Spin applied effectively "after" or "on top" of user input)
+                 R_delta_cam = R_spin @ R_delta_cam
+                 
+                 self.pending_rot_z = 0 
             
-            # World rotation update
-            # Note: If frames are permuted, we might need to adjust R_world logic foundation,
-            # but usually R_cam handles the frame transform.
             R_world = R_cam @ R_delta_cam @ R_cam.T
-
+            
             rot_delta = np.eye(4, dtype=np.float32)
             rot_delta[:3, :3] = R_world
-
+            
             trans_delta = np.eye(4, dtype=np.float32)
             trans_delta[3, :3] = trans_vec
-
-            # 3. Apply to Affine
+            
+            # Apply
             pivot_pos, pivot_neg = self.get_affine_pivot_matrices(model_extents)
-            
             new_affine = trans_delta @ curr_affine @ (pivot_neg @ rot_delta @ pivot_pos)
-
-            # 4. Write back
+            
             await self.remote_write("motion", True)
-            
-            if not perspective:
-                extents = await self.remote_read("view.extents")
-                if extents:
-                    # Adaptive zoom for Ortho too?
-                    # Scale based on current extent size (extents[2] is usually width/height?)
-                    # Let's use max extent dimension.
-                    view_size = max([abs(e) for e in extents])
-                    
-                    # Zoom delta relative to view size
-                    zoom_delta = tz * APP_CONFIG["sensitivity"]["zoom"] # Inverted and boosted
-                    
-                    scale = 1.0 + zoom_delta
-                    new_extents = [c * scale for c in extents]
-                    await self.remote_write("view.extents", new_extents)
-
             await self.remote_write("view.affine", new_affine.reshape(-1).tolist())
-            
+
         except Exception as e:
-            logging.error(f"Error in process_motion: {e}")
+            logging.error(f"Motion Error: {e}")
 
     async def remote_read(self, property_name):
         return await self.client_rpc("self:read", property_name)
@@ -468,13 +443,6 @@ class Controller:
                      logging.info(f"Button {bnum}: Key {value}")
                 
             elif action == "modifier":
-                # UInput handles press/release in combo? 
-                # Our simple combo is press+release. For modifiers as "hold", we need different logic.
-                # But current usage is single press actions mostly. User wanted Modifiers as keys?
-                # If mapped to "Shift_L", press_combo("Shift_L") does press and release.
-                # If the user wants to HOLD shift while moving mouse, that's complex.
-                # Status Quo: Just press it once (likely toggles or useless).
-                # Re-implementing as simple key press for now.
                 if vkab:
                      vkab.press_combo(value)
                      logging.info(f"Button {bnum}: Modifier {value}")
@@ -485,16 +453,19 @@ class Controller:
                     logging.info(f"Horizon Lock: {self.horizon_locked}")
                     
                 elif value == "spin_90":
-                     self.pending_rot_z -= 90
-                     logging.info(f"Spin 90 Clockwise Triggered. Pending: {self.pending_rot_z}")
-                     # Fix: Force a motion update to apply rotation immediately
-                     # Create a dummy zero-motion event to trigger process_motion
-                     dummy_motion = spnav.SpnavEventMotion(
-                         type=spnav.SPNAV_EVENT_MOTION, 
-                         x=0, y=0, z=0, rx=0, ry=0, rz=0, period=0, data=None
-                     )
-                     dummy_event = spnav.SpnavEvent(type=spnav.SPNAV_EVENT_MOTION, motion=dummy_motion)
-                     await self.process_motion(dummy_event)
+                    self.pending_rot_z = -math.pi / 2
+                    logging.info("Spin 90 requested. Triggering immediate motion update.")
+                    
+                    # Create a dummy zero-motion event to force process_motion to run immediately
+                    # We can't easily construct a SpaceNav event here without spnav module
+                    # But process_motion just takes an object with .motion.x etc.
+                    class DummyEvent:
+                        class Motion:
+                            x=0; y=0; z=0; rx=0; ry=0; rz=0
+                        motion = Motion()
+                    
+                    await self.process_motion(DummyEvent())
+
 
 
             elif action == "open_browser" and is_press:
@@ -603,8 +574,7 @@ async def handle_websocket(websocket):
         async for message in websocket:
             try:
                 data = json.loads(message)
-                if not isinstance(data, list): continue
-                
+                logging.debug(f"WS RX: {data}")
                 msg_type = data[0]
                 
                 if msg_type == WAMP_PREFIX:
@@ -688,22 +658,50 @@ async def handle_websocket(websocket):
 # ---------------------------------------------------------
 
 def spacenav_thread_func():
-    logging.info("Opening spacenavd...")
-    try:
-        spnav.spnav_open()
-    except spnav.SpnavError:
-        logging.error("No spacenavd.")
-        return
-
+    logging.info("Spacenav thread started.")
+    
     while True:
-        event = spnav.spnav_wait_event()
-        if event:
-            if event.type == SPNAV_EVENT_MOTION or event.type == SPNAV_EVENT_BUTTON:
-                if event_queue_loop:
-                     asyncio.run_coroutine_threadsafe(event_queue.put(event), event_queue_loop)
-        else:
-            # Prevent infinite CPU loop if spnavd disconnects or returns error
-            time.sleep(0.5)
+        # 1. Connection Loop
+        connected = False
+        try:
+            spnav.spnav_open()
+            connected = True
+            logging.info("Connected to spacenavd.")
+        except spnav.SpnavError:
+            logging.error("Failed to connect to spacenavd. Retrying in 2s...")
+            time.sleep(2)
+            continue
+            
+        # 2. Event Loop
+        while connected:
+            try:
+                event = spnav.spnav_wait_event()
+                if event:
+                    if event.type == SPNAV_EVENT_MOTION or event.type == SPNAV_EVENT_BUTTON:
+                        if event_queue_loop:
+                             asyncio.run_coroutine_threadsafe(event_queue.put(event), event_queue_loop)
+                else:
+                    # spnav_wait_event returning None usually implies no event, 
+                    # but if connection is broken it might loop rapidly?
+                    # libspnav wrapper usually blocks or returns None. 
+                    # If we loop too fast with None, checking connection health is tricky without polling.
+                    # But usually receiving None constantly is fine if non-blocking?
+                    # Our C-wrapper uses XNextEvent or read(). If socket closes, read returns 0/Error.
+                    # We should check if socket is still valid.
+                    
+                    # For now, minimal sleep to stay CPU friendly
+                    time.sleep(0.01)
+                    
+                    # Check connection health? 
+                    # If spnavd dies, wait_event might throw or return error.
+                    # We'll rely on exception or explicit check if wrapper supports it.
+            except Exception as e:
+                logging.error(f"Spacenav error: {e}. Reconnecting...")
+                connected = False
+                spnav.spnav_close()
+                time.sleep(1)
+
+    # Should not reach here
 
 event_queue_loop = None
 
@@ -764,7 +762,7 @@ async def main():
 
     server = await websockets.serve(
         handle_websocket, "0.0.0.0", 8181, ssl=ssl_context,
-        process_request=process_request, subprotocols=["wamp"]
+        process_request=process_request, subprotocols=["wamp", "3dx-v1"]
     )
     logging.info("Bridge Running.")
 

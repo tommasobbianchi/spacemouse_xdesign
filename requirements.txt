@@ -3,3 +3,5 @@ numpy
 evdev
 pystray
 Pillow
+pycairo
+PyGObject

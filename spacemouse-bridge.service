@@ -1,17 +1,18 @@
 [Unit]
-Description=3DConnexion SpaceMouse Bridge for xDesign
-After=network.target
-Conflicts=spacenav-ws.service
+Description=SpaceMouse Bridge for xDesign (User Service)
+After=gnome-session.target network.target
 
 [Service]
 Type=simple
-User=tommaso
+# Connect to the specific venv python interpreter
+ExecStart=/run/media/tommaso/App/dev/spacemouse_xdesign/spacemouse_bridge/venv/bin/python3 /run/media/tommaso/App/dev/spacemouse_xdesign/spacemouse_bridge/main.py
 WorkingDirectory=/run/media/tommaso/App/dev/spacemouse_xdesign/spacemouse_bridge
-Environment=DISPLAY=:0
-Environment=XAUTHORITY=/home/tommaso/.Xauthority
-ExecStart=/usr/bin/python3 main.py
 Restart=always
-RestartSec=3
+RestartSec=2
+# Ensure GUI access for pystray (Tray Icon) if run as service, although tray usually runs separately
+Environment=PYTHONUNBUFFERED=1
+Environment=DISPLAY=:0
+Environment=XAUTHORITY=/run/user/1000/.mutter-Xwaylandauth.ARD7G3
 
 [Install]
 WantedBy=default.target

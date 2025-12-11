@@ -1,29 +1,21 @@
 {
-    "sensitivity": {
-        "translation": 0.00015,
-        "rotation": 0.01,
-        "zoom": 3e-05
-    },
+    "sensitivity": 0.1,
     "spin_axis": "y",
     "buttons": {
         "0": {
             "action": "key",
-            "value": "n",
-            "description": "Custom 1"
+            "value": "n"
         },
         "1": {
             "action": "key",
-            "description": "Custom 2",
             "value": "ctrl+1"
         },
         "2": {
             "action": "key",
-            "description": "Custom 3",
             "value": "ctrl+2"
         },
         "3": {
             "action": "key",
-            "description": "Custom 4",
             "value": "ctrl+3"
         },
         "4": {
@@ -81,5 +73,7 @@
             "value": "Control_L",
             "description": "Ctrl"
         }
-    }
+    },
+    "gamma": 1,
+    "deadzone": 10
 }
