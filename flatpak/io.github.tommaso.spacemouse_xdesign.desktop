@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=SpaceMouse Bridge
+Comment=Connect 3Dconnexion SpaceMouse to xDesign
+Exec=spacemouse-bridge
+Icon=io.github.tommaso.spacemouse_xdesign
+Terminal=true
+Categories=Utility;
+Keywords=3Dconnexion;SpaceMouse;CAD;

@@ -45,6 +45,14 @@ modules:
       - echo 'cd /app/share/spacemouse-bridge' >> /app/bin/spacemouse-bridge
       - echo 'exec python3 main.py "$@"' >> /app/bin/spacemouse-bridge
       - chmod +x /app/bin/spacemouse-bridge
+      
+      # Install Metadata and Icon
+      - mkdir -p /app/share/metainfo
+      - cp flatpak/io.github.tommaso.spacemouse_xdesign.metainfo.xml /app/share/metainfo/
+      - mkdir -p /app/share/applications
+      - cp flatpak/io.github.tommaso.spacemouse_xdesign.desktop /app/share/applications/
+      - mkdir -p /app/share/icons/hicolor/64x64/apps
+      - cp assets/icon.png /app/share/icons/hicolor/64x64/apps/io.github.tommaso.spacemouse_xdesign.png
     sources:
       - type: dir
         path: ..
