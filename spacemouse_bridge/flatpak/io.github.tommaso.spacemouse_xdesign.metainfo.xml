@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="console-application">
+  <id>io.github.tommaso.spacemouse_xdesign</id>
+  
+  <name>SpaceMouse Bridge</name>
+  <summary>Connect 3Dconnexion SpaceMouse to SolidWorks xDesign</summary>
+  
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>MIT</project_license>
+  
+  <description>
+    <p>
+      SpaceMouse Bridge is a utility that connects your 3Dconnexion SpaceMouse to SolidWorks xDesign (3DEXPERIENCE) via a WebSocket bridge.
+    </p>
+    <p>Features:</p>
+    <ul>
+      <li>Smooth 6DoF navigation in xDesign.</li>
+      <li>Automatic "Spin 90" support.</li>
+      <li>Configurable sensitivity and deadzones.</li>
+      <li>Web-based configuration UI.</li>
+    </ul>
+  </description>
+  
+  <url type="homepage">https://github.com/tommaso/spacemouse_xdesign</url>
+  <url type="bugtracker">https://github.com/tommaso/spacemouse_xdesign/issues</url>
+  
+  <releases>
+    <release version="0.2.0" date="2025-12-11">
+      <description>
+        <p>Beta release with Flatpak support, "Spin 90" fix, and stability improvements.</p>
+      </description>
+    </release>
+  </releases>
+  
+  <content_rating type="oars-1.1"/>
+</component>

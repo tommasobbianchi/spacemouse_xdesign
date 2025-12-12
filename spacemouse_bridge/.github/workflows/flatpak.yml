@@ -1,0 +1,44 @@
+name: Build Flatpak
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  flatpak:
+    name: "Flatpak Builder"
+    runs-on: ubuntu-latest
+    container:
+      image: bilelmoussaoui/flatpak-github-actions:freedesktop-23.08
+      options: --privileged
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Install dependencies
+      run: |
+        apt-get update && apt-get install -y git wget python3-pip
+        # Install flatpak-pip-generator requirements
+        pip3 install aiohttp mistune
+        # Get generator
+        wget https://raw.githubusercontent.com/flatpak/flatpak-builder-tools/master/pip/flatpak-pip-generator
+        chmod +x flatpak-pip-generator
+
+    - name: Generate Python Requirements
+      run: |
+        ./flatpak-pip-generator --output flatpak/python3-requirements.json --requirements requirements.txt
+
+    - name: Build Flatpak
+      uses: bilelmoussaoui/flatpak-github-actions/flatpak-builder@v6
+      with:
+        bundle: spacemouse-xdesign.flatpak
+        manifest-path: flatpak/io.github.tommaso.spacemouse_xdesign.yml
+        cache-key: flatpak-builder-${{ github.sha }}
+
+    - name: Upload Bundle
+      uses: actions/upload-artifact@v4
+      with:
+        name: spacemouse-xdesign.flatpak
+        path: spacemouse-xdesign.flatpak

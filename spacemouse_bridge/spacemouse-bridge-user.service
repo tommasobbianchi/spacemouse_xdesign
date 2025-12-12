@@ -1,0 +1,14 @@
+[Unit]
+Description=3DConnexion SpaceMouse Bridge for xDesign (User Service)
+After=gnome-session.target network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/python3 /run/media/tommaso/App/dev/spacemouse_xdesign/spacemouse_bridge/main.py
+WorkingDirectory=/run/media/tommaso/App/dev/spacemouse_xdesign/spacemouse_bridge
+Restart=always
+RestartSec=3
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=default.target

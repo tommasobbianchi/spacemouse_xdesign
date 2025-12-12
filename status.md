@@ -1,24 +1,30 @@
-# Project Status: SpaceMouse Bridge for xDesign
+# Project Status
 
-**Current Status:** ✅ Operational
-**Last Updated:** 2026-01-05
+## Current Focus
+**Distribution & Maintenance**.
+The SpaceMouse Bridge is fully functional and has been **submitted to Flathub** (PR #7293).
 
-## System Health
--   **Service:** `spacemouse-bridge` (User Systemd Service) is **ACTIVE** and running.
--   **Connectivity:**
-    -   Secure WebSocket (WSS) listening on port `8181`.
-    -   Certificates updated to support `localhost`, `127.0.0.1`, and `127.51.68.120`.
-    -   Private Network Access (PNA) checks are passing.
--   **Integration:**
-    -   **xDesign:** Connecting successfully via IPv6/IPv4 loopback. Motion input verified.
-    -   **Config UI:** Connecting successfully via dynamic hostname binding.
+## Completed Tasks
+- **Spin 90 Fix**: Implemented immediate rotation logic (dummy motion event) to eliminate lag.
+- **Service Hardening**: Added `RestartSec=2` and connection retry loop for better stability.
+- **View Shortcuts**: Fixed by switching to **uinput/evdev** virtual keyboard driver (bypasses Wayland security) with 50ms input delay (fixes registration issues).
+- **Menu Button**: Mapped to **"g"** key (correct xDesign shortcut) on Button 4.
+- **Configuration**: Added `config.json` for sensitivity and button mapping.
+- **Service Installation**: Installed `spacemouse-bridge.service` and resolved conflict with `spacenav-ws`.
+- **Connectivity**: Resolved SSL certificate issues.
 
-## Key Fixes Applied
-1.  **SSL Certification:** Regenerated self-signed certificates with Subject Alternative Names (SANs) for specific IPs used by xDesign.
-2.  **Browser Security Compliance:** Implemented `Access-Control-Allow-Private-Network` headers to comply with modern browser CORS policies for local devices.
-3.  **HTTP Probe Compatibility:** Restored support for HTTP GET probes that xDesign performs before WebSocket upgrade.
-4.  **Stability:** Fixed server crash related to logging protocol headers.
+## Packaging & Distribution
+- **Flatpak**: Full manifest `io.github.tommaso.spacemouse_xdesign.yml` created.
+- **Dependencies**: Bundled `libspnav` (C) and Python env (numpy, etc) fully sandboxed.
+- **Submission**: PR opened on Flathub [#7293](https://github.com/flathub/flathub/pull/7293).
 
-## User Actions Required
--   **None** for normal operation.
--   **Troubleshooting:** If connection is lost, check validity of certificate at `https://127.51.68.120:8181` and `https://localhost:8181`.
+## Status Details
+- **Architecture**: Stable.
+- **Motion**: Fluid. Sensitivity tunable via config.
+- **Buttons**: Fully configurable.
+- **System**: Auto-starts on login.
+
+## Next Steps
+- Enjoy using the SpaceMouse!
+- (Optional) Refine "Lock Horizon" logic if needed in the future.
+- (Optional) Add more RPC calls if discovered.

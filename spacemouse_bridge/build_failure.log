@@ -1,0 +1,64 @@
+Emptying app dir 'build-dir'
+Downloading sources
+Starting build of io.github.tommaso.spacemouse_xdesign
+Cache hit for libspnav, skipping build
+Cache hit for python3-websockets, skipping build
+Cache hit for python3-meson-python, skipping build
+Cache hit for python3-packaging, skipping build
+Cache hit for python3-pybind11, skipping build
+Cache hit for python3-numpy, skipping build
+Cache hit for python3-evdev, skipping build
+Cache hit for python3-pystray, skipping build
+Cache hit for python3-Pillow, skipping build
+Cache hit for python3-pycairo, skipping build
+Cache miss, checking out last cache hit
+========================================================================
+Building module python3-PyGObject in /run/media/tommaso/App/dev/spacemouse_xdesign/spacemouse_bridge/.flatpak-builder/build/python3-PyGObject-2
+========================================================================
+Running: pip3 install --verbose --exists-action=i --no-index --find-links="file://${PWD}" --prefix=${FLATPAK_DEST} "PyGObject" --no-build-isolation
+Using pip 25.1.1 from /usr/lib/python3.11/site-packages/pip (python 3.11)
+Looking in links: file:///run/build/python3-PyGObject
+Processing ./pygobject-3.54.5.tar.gz
+  Preparing metadata (pyproject.toml): started
+  Running command Preparing metadata (pyproject.toml)
+  + meson setup /tmp/pip-install-n4qrddsq/pygobject_11b9dab7cd9e497788b01f43980b3308 /tmp/pip-install-n4qrddsq/pygobject_11b9dab7cd9e497788b01f43980b3308/.mesonpy-24vnpoza -Dbuildtype=release -Db_ndebug=if-release -Db_vscrt=md -Dtests=false -Dwheel=true --wrap-mode=nofallback --native-file=/tmp/pip-install-n4qrddsq/pygobject_11b9dab7cd9e497788b01f43980b3308/.mesonpy-24vnpoza/meson-python-native-file.ini
+  The Meson build system
+  Version: 1.3.2
+  Source dir: /tmp/pip-install-n4qrddsq/pygobject_11b9dab7cd9e497788b01f43980b3308
+  Build dir: /tmp/pip-install-n4qrddsq/pygobject_11b9dab7cd9e497788b01f43980b3308/.mesonpy-24vnpoza
+  Build type: native build
+  Project name: pygobject
+  Project version: 3.54.5
+  C compiler for the host machine: ccache cc (gcc 13.2.0 "cc (GCC) 13.2.0")
+  C linker for the host machine: cc ld.bfd 2.45
+  Host machine cpu family: x86_64
+  Host machine cpu: x86_64
+  Program python3 found: YES (/usr/bin/python)
+  Found pkg-config: YES (/usr/bin/pkg-config) 2.5.1
+  Run-time dependency python found: YES 3.11
+  Found CMake: /usr/bin/cmake (3.29.9)
+  Run-time dependency girepository-2.0 found: NO (tried pkgconfig and cmake)
+  Not looking for a fallback subproject for the dependency girepository-2.0 because:
+  Use of fallback dependencies is disabled.
+
+  ../meson.build:31:9: ERROR: Dependency 'girepository-2.0' is required but not found.
+
+  A full log can be found at /tmp/pip-install-n4qrddsq/pygobject_11b9dab7cd9e497788b01f43980b3308/.mesonpy-24vnpoza/meson-logs/meson-log.txt
+  error: subprocess-exited-with-error
+  
+  × Preparing metadata (pyproject.toml) did not run successfully.
+  │ exit code: 1
+  ╰─> See above for output.
+  
+  note: This error originates from a subprocess, and is likely not a problem with pip.
+  full command: /usr/bin/python /usr/lib/python3.11/site-packages/pip/_vendor/pyproject_hooks/_in_process/_in_process.py prepare_metadata_for_build_wheel /tmp/tmpz5ietx3s
+  cwd: /tmp/pip-install-n4qrddsq/pygobject_11b9dab7cd9e497788b01f43980b3308
+  Preparing metadata (pyproject.toml): finished with status 'error'
+error: metadata-generation-failed
+
+× Encountered error while generating package metadata.
+╰─> See above for output.
+
+note: This is an issue with the package mentioned above, not pip.
+hint: See above for details.
+Error: module python3-PyGObject: Processo figlio uscito con codice 1

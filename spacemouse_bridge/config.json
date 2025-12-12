@@ -1,0 +1,79 @@
+{
+    "sensitivity": 0.1,
+    "spin_axis": "y",
+    "buttons": {
+        "0": {
+            "action": "key",
+            "value": "n"
+        },
+        "1": {
+            "action": "key",
+            "value": "ctrl+1"
+        },
+        "2": {
+            "action": "key",
+            "value": "ctrl+2"
+        },
+        "3": {
+            "action": "key",
+            "value": "ctrl+3"
+        },
+        "4": {
+            "action": "open_browser",
+            "value": "",
+            "description": "Open Config UI"
+        },
+        "5": {
+            "action": "key",
+            "value": "f",
+            "description": "Fit"
+        },
+        "6": {
+            "action": "key",
+            "value": "ctrl+5",
+            "description": "Top View"
+        },
+        "7": {
+            "action": "key",
+            "value": "ctrl+4",
+            "description": "Right View"
+        },
+        "8": {
+            "action": "key",
+            "value": "ctrl+1",
+            "description": "Front View"
+        },
+        "9": {
+            "action": "logic",
+            "value": "spin_90",
+            "description": "Spin 90 Clockwise"
+        },
+        "10": {
+            "action": "logic",
+            "value": "lock_horizon",
+            "description": "Toggle Horizon Lock"
+        },
+        "11": {
+            "action": "key",
+            "value": "Escape",
+            "description": "ESC"
+        },
+        "12": {
+            "action": "modifier",
+            "value": "Alt_L",
+            "description": "Alt"
+        },
+        "13": {
+            "action": "modifier",
+            "value": "Shift_L",
+            "description": "Shift"
+        },
+        "14": {
+            "action": "modifier",
+            "value": "Control_L",
+            "description": "Ctrl"
+        }
+    },
+    "gamma": 1,
+    "deadzone": 10
+}

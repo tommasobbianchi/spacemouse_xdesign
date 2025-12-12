@@ -1,0 +1,327 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SpaceMouse Bridge Config</title>
+    <style>
+        :root {
+            --bg: #121212;
+            --surface: #1e1e1e;
+            --primary: #bb86fc;
+            --text: #e0e0e0;
+            --input-bg: #2c2c2c;
+            --border: #333;
+            --success: #03dac6;
+            --error: #cf6679;
+        }
+
+        body {
+            background-color: var(--bg);
+            color: var(--text);
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: flex-start;
+            min-height: 100vh;
+            margin: 0;
+            padding: 20px;
+        }
+
+        .container {
+            background-color: var(--surface);
+            padding: 30px;
+            border-radius: 12px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+            width: 100%;
+            max-width: 500px;
+        }
+
+        h1 {
+            margin-top: 0;
+            color: var(--primary);
+            font-size: 1.5rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .status {
+            font-size: 0.8rem;
+            padding: 4px 8px;
+            border-radius: 4px;
+            background: #333;
+            color: #888;
+        }
+
+        .status.connected {
+            background: rgba(3, 218, 198, 0.2);
+            color: var(--success);
+        }
+
+        .status.error {
+            background: rgba(207, 102, 121, 0.2);
+            color: var(--error);
+        }
+
+        .section {
+            margin-bottom: 24px;
+        }
+
+        .section h2 {
+            font-size: 1.1rem;
+            margin-bottom: 12px;
+            border-bottom: 1px solid var(--border);
+            padding-bottom: 8px;
+        }
+
+        .form-group {
+            margin-bottom: 16px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 6px;
+            font-size: 0.9rem;
+            color: #aaa;
+        }
+
+        input,
+        select {
+            width: 100%;
+            padding: 10px;
+            background: var(--input-bg);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            color: var(--text);
+            font-size: 1rem;
+            box-sizing: border-box;
+        }
+
+        input:focus {
+            outline: none;
+            border-color: var(--primary);
+        }
+
+        button {
+            width: 100%;
+            padding: 12px;
+            background: var(--primary);
+            color: #000;
+            border: none;
+            border-radius: 6px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: opacity 0.2s;
+        }
+
+        button:hover {
+            opacity: 0.9;
+        }
+
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .toast {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            background: var(--surface);
+            border: 1px solid var(--primary);
+            padding: 12px 20px;
+            border-radius: 8px;
+            transform: translateY(100px);
+            transition: transform 0.3s;
+        }
+
+        .toast.show {
+            transform: translateY(0);
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="container">
+        <h1>Config</h1>
+
+        <div class="section">
+            <h2>Custom Buttons (1-4)</h2>
+            <div class="card">
+                <h2>Sensitivity</h2>
+                <div class="control-group">
+                    <label for="sensitivity">Master Speed</label>
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                        <input type="range" id="sensitivity" min="0.1" max="5.0" step="0.1" value="1.0"
+                            oninput="document.getElementById('sens-val').innerText = this.value">
+                        <span id="sens-val" style="min-width: 30px;">1.0</span>
+                    </div>
+                </div>
+
+                <div class="control-group">
+                    <label for="gamma">Response Curve (Gamma)</label>
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                        <input type="range" id="gamma" min="1.0" max="3.0" step="0.1" value="1.0"
+                            oninput="document.getElementById('gamma-val').innerText = this.value">
+                        <span id="gamma-val" style="min-width: 30px;">1.0</span>
+                    </div>
+                    <p style="font-size: 0.8rem; color: #aaa; margin-top: 5px;">1.0 = Linear (Standard) <br> 2.0 =
+                        Precision Center (Slow start, fast finish)</p>
+                </div>
+
+                <div class="control-group">
+                    <label for="deadzone">Deadzone</label>
+                    <input type="number" id="deadzone" value="10"
+                        style="width: 60px; background: #333; border: 1px solid #555; color: white; padding: 5px; border-radius: 4px;">
+                </div>
+
+                <div class="control-group">
+                    <label for="spin_axis">Spin 90 Axis</label>
+                    <select id="spin_axis"
+                        style="background: #333; border: 1px solid #555; color: white; padding: 5px; border-radius: 4px;">
+                        <option value="z">Z (Screen Plane)</option>
+                        <option value="y">Y (Up/Down)</option>
+                        <option value="x">X (Left/Right)</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="card">
+                <h2>Button Mapping</h2>
+                <div id="buttons-container">
+                    <!-- Buttons injected by JS -->
+                </div>
+            </div>
+        </div>
+
+        <div class="status-bar" id="status-bar">
+            Status: Disconnected
+        </div>
+
+        <div style="text-align: right; max-width: 800px; margin: 20px auto;">
+            <button class="btn" onclick="saveConfig()">Save Configuration</button>
+        </div>
+
+        <script>
+            let ws;
+            let config = {};
+
+            function connect() {
+                ws = new WebSocket("wss://localhost:8181/3dconnexion/nlproxy", "3dx-v1"); // WAMP sub-protocol
+
+                ws.onopen = function () {
+                    document.getElementById('status-bar').innerText = "Status: Connected";
+                    document.getElementById('status-bar').style.color = "#4caf50";
+
+                    // WAMP Handshake
+                    // Send HELLO? No, bridge sends WELCOME first.
+                    // Wait for WELCOME?
+                    // Actually bridge sends WELCOME on connect.
+                    // Then we send CALL config.get
+                };
+
+                ws.onmessage = function (event) {
+                    let data = JSON.parse(event.data);
+                    // [0, session, 1, ident] -> WELCOME
+                    if (data[0] === 0) {
+                        // Connected. Call config.get
+                        // [2, callID, "config.get"]
+                        ws.send(JSON.stringify([2, "req1", "config.get"]));
+                    }
+                    // [3, callID, result] -> CALLRESULT
+                    else if (data[0] === 3) {
+                        if (data[1] === "req1") {
+                            config = data[2];
+                            loadConfigUI();
+                        } else if (data[1] === "req2") {
+                            alert("Configuration Saved!");
+                        }
+                    }
+                };
+
+                ws.onclose = function () {
+                    document.getElementById('status-bar').innerText = "Status: Disconnected (Retrying...)";
+                    document.getElementById('status-bar').style.color = "#f44336";
+                    setTimeout(connect, 3000);
+                };
+            }
+
+            function loadConfigUI() {
+                // Sensitivity
+                let s = config.sensitivity;
+                if (typeof s === 'object') s = s.translation || 1.0; // Retro compat
+                document.getElementById('sensitivity').value = s;
+                document.getElementById('sens-val').innerText = s;
+
+                // Gamma
+                let g = config.gamma || 1.0;
+                document.getElementById('gamma').value = g;
+                document.getElementById('gamma-val').innerText = g;
+
+                // Deadzone
+                document.getElementById('deadzone').value = config.deadzone || 10;
+
+                // Spin Axis
+                document.getElementById('spin_axis').value = config.spin_axis || "z";
+
+                // Buttons
+                let container = document.getElementById('buttons-container');
+                container.innerHTML = "";
+
+                // Ensure buttons 1-4 exist
+                for (let i = 0; i < 4; i++) {
+                    let bid = i; // ID 0-3
+                    let label = "Button " + (i + 1);
+
+                    let bconf = (config.buttons && config.buttons[bid]) || { action: "none", value: "" };
+
+                    let html = `
+                <div class="control-group" style="border-bottom: 1px solid #333; padding-bottom: 10px; margin-bottom: 10px;">
+                    <label>${label}</label>
+                    <div style="display: flex; gap: 10px;">
+                        <select onchange="updateButtonType(${bid}, this.value)" style="background: #333; border: 1px solid #555; color: white; padding: 5px; border-radius: 4px;">
+                            <option value="none" ${bconf.action == 'none' ? 'selected' : ''}>None</option>
+                            <option value="key" ${bconf.action == 'key' ? 'selected' : ''}>Keyboard Shortcut</option>
+                            <option value="modifier" ${bconf.action == 'modifier' ? 'selected' : ''}>Modifier (Ctrl/Shift)</option>
+                            <option value="logic" ${bconf.action == 'logic' ? 'selected' : ''}>Special Function</option>
+                            <option value="open_browser" ${bconf.action == 'open_browser' ? 'selected' : ''}>Open Config UI</option>
+                        </select>
+                        <input type="text" id="val-${bid}" value="${bconf.value || ''}" placeholder="Value (e.g. 'ctrl+z')" style="flex-grow: 1; background: #333; border: 1px solid #555; color: white; padding: 5px; border-radius: 4px;">
+                    </div>
+                </div>
+                `;
+                    container.innerHTML += html;
+                }
+            }
+
+            function saveConfig() {
+                config.sensitivity = parseFloat(document.getElementById('sensitivity').value);
+                config.gamma = parseFloat(document.getElementById('gamma').value);
+                config.deadzone = parseInt(document.getElementById('deadzone').value);
+                config.spin_axis = document.getElementById('spin_axis').value;
+
+                // Buttons
+                if (!config.buttons) config.buttons = {};
+                for (let i = 0; i < 4; i++) {
+                    let typeElem = document.querySelectorAll(`select[onchange*="${i}"]`)[0];
+                    let valElem = document.getElementById(`val-${i}`);
+
+                    config.buttons[i] = {
+                        action: typeElem.value,
+                        value: valElem.value
+                    };
+                }
+
+                // Send
+                ws.send(JSON.stringify([2, "req2", "config.set", config]));
+            }
+
+            connect();
+        </script>
+
+</body>
+
+</html>

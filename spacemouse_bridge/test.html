@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>SpaceMouse Bridge Test (WSS)</title>
+    <style>
+        body {
+            font-family: sans-serif;
+            padding: 20px;
+        }
+
+        #status {
+            font-weight: bold;
+        }
+
+        .data {
+            font-family: monospace;
+            white-space: pre;
+            background: #f0f0f0;
+            padding: 10px;
+            border-radius: 5px;
+        }
+
+        .alert {
+            background: #fee;
+            border: 1px solid #fcc;
+            color: #c00;
+            padding: 10px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+        }
+    </style>
+</head>
+
+<body>
+    <h1>SpaceMouse Bridge Test (WSS)</h1>
+    <div class="alert">
+        <strong>Important:</strong> Because we are using a self-signed certificate, you MUST open
+        <a href="https://localhost:8181" target="_blank">https://localhost:8181</a>
+        in a new tab and accept the security warning (Advanced -> Proceed) before this page or xDesign will connect.
+    </div>
+    <p>Status: <span id="status">Disconnected</span></p>
+    <div class="data" id="output">Waiting for data...</div>
+
+    <script>
+        const statusEl = document.getElementById('status');
+        const outputEl = document.getElementById('output');
+        let ws;
+
+        function connect() {
+            // Connect to localhost (matches certificate)
+            ws = new WebSocket('wss://localhost:8181/3dconnexion/nlproxy');
+
+            ws.onopen = () => {
+                statusEl.innerText = 'Connected';
+                statusEl.style.color = 'green';
+                // Handshake: [5, "com.3dconnexion.motion"]
+                ws.send(JSON.stringify([5, "com.3dconnexion.motion"]));
+                outputEl.innerText += "\nSent: [5, 'com.3dconnexion.motion']";
+            };
+
+            ws.onclose = () => {
+                statusEl.innerText = 'Disconnected - Retrying in 2s';
+                statusEl.style.color = 'red';
+                setTimeout(connect, 2000);
+            };
+
+            ws.onerror = (err) => {
+                console.error('WebSocket error:', err);
+                ws.close();
+            };
+
+            ws.onmessage = (event) => {
+                const data = JSON.parse(event.data);
+                outputEl.innerText = JSON.stringify(data, null, 2);
+            };
+        }
+
+        connect();
+    </script>
+</body>
+
+</html>
