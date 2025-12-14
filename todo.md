@@ -6,6 +6,17 @@
 - [x] Generate AppStream Metadata (`metainfo.xml`, `.desktop`)
 - [x] Submit to Flathub (PR #7293)
 - [ ] Address Flathub Reviewer Feedback
+- [ ] **Snap Package**: Create `snapcraft.yaml` (Critical for Ubuntu support).
+    - [ ] Handle `uinput` interface plug.
+    - [ ] Handle `spacenavd` socket access.
+
+## Installation Simplification (Casual Use)
+- [ ] **Fix `install.sh`**:
+    - [ ] Auto-copy `config.json` from repo to `~/.config/spacemouse-bridge/`.
+    - [ ] Check/Install `udev` rules for `uinput` automatically (ask for sudo).
+    - [ ] Check/Install system dependencies (`apt install ...`) or warn explicitly.
+- [ ] **SSL Automation**: Investigate `mkcert` or similar to install a local CA so browsers trust it automatically?
+- [ ] **Packaging Research**: Evaluate AppImage vs Flatpak for "Single File" delivery.
 
 ## High Priority (Fixes)
 - [x] Fix View Shortcuts

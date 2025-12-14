@@ -23,6 +23,14 @@ The SpaceMouse Bridge is fully functional and has been **submitted to Flathub** 
 - **Motion**: Fluid. Sensitivity tunable via config.
 - **Buttons**: Fully configurable.
 - **System**: Auto-starts on login.
+- **Deployment**: Verified on Spoke (`tommaso-behemoth-1`).
+
+## Known Installation Friction (Spoke Deployment)
+During the deployment on `tommaso-behemoth-1`, several critical friction points were identified for "Casual Users":
+1. **Config File**: `install.sh` does not assume a default config, leaving the user with no buttons until manual copy.
+2. **Permissions**: `uinput` requires `udev` rules and a **Reboot/Logout**, which is not handled by the script.
+3. **SSL Trust**: Browsers do not trust `localhost` (and especially `127.x.x.x` IPs used by xDesign) by default, requiring manual "Accept Risk" steps.
+4. **Dependencies**: `libspnav` and `python3-gi` (AppIndicator) must be installed via `apt`, which is not automated for all distros.
 
 ## Next Steps
 - Enjoy using the SpaceMouse!
