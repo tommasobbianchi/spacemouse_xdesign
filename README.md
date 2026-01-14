@@ -1,8 +1,12 @@
 # SpaceMouse Bridge for xDesign (Linux)
 
-![SpaceMouse xDesign](https://img.shields.io/badge/Platform-Linux-blue) ![Status](https://img.shields.io/badge/Status-Stable-green)
+![SpaceMouse xDesign](https://img.shields.io/badge/Platform-Linux-blue) ![Device](https://img.shields.io/badge/Device-SpaceMouse_Pro-orange) ![Status](https://img.shields.io/badge/Status-Stable-green)
 
-This project enables **3Dconnexion SpaceMouse** support for **Dassault Systèmes xDesign** (3DEXPERIENCE Platform) on Linux systems. It acts as a bridge, emulating the official Windows driver protocol via a local secure WebSocket server.
+This project enables **3Dconnexion SpaceMouse Pro** support for **Dassault Systèmes xDesign** (3DEXPERIENCE Platform) on Linux systems. 
+
+> **Note**: This bridge has been developed and tested specifically with the **SpaceMouse Pro**. Compatibility with other models (Compact, Enterprise, Wireless) is likely possible (via `libspnav`) but **not verified**.
+
+It acts as a bridge, emulating the official Windows driver protocol via a local secure WebSocket server.
 
 ## 🚀 Purpose
 Dassault Systèmes xDesign relies on a local WebSocket service to communicate with 3D hardware. While official drivers exist for Windows, Linux support is often limited or requires complex workarounds. This bridge:
