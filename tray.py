@@ -12,7 +12,7 @@ import websockets
 import logging
 
 # Configuration
-BRIDGE_URL = "ws://localhost:8181"
+BRIDGE_URL = "wss://localhost:8181"
 ICON_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets", "icon.png")
 
 # Logging
@@ -75,7 +75,7 @@ class SpaceMouseTray:
 
         while self.running:
             try:
-                async with websockets.connect(BRIDGE_URL, ssl=ssl_context) as ws:
+                async with websockets.connect(BRIDGE_URL, ssl=ssl_context, subprotocols=["3dx-v1"]) as ws:
                     self.connected = True
                     self.update_icon()
                     logging.info("Connected to Bridge")

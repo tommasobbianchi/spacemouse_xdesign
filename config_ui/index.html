@@ -210,7 +210,9 @@
             let config = {};
 
             function connect() {
-                ws = new WebSocket("wss://localhost:8181/3dconnexion/nlproxy", "3dx-v1"); // WAMP sub-protocol
+                // Use the same hostname as the page to match the SSL certificate trust
+                const host = window.location.hostname;
+                ws = new WebSocket(`wss://${host}:8181/3dconnexion/nlproxy`, "3dx-v1");
 
                 ws.onopen = function () {
                     document.getElementById('status-bar').innerText = "Status: Connected";

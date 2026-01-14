@@ -5,8 +5,9 @@ import os
 import logging
 import http
 import ssl
-import websockets
-from websockets.http11 import Response, Headers
+# import websockets # Replaced by aiohttp
+from aiohttp import web, WSMsgType
+import signal
 import time
 import random
 import string
@@ -521,7 +522,7 @@ class Controller:
         
         try:
             # logging.debug(f"RPC OUT: {event_msg}")
-            await self.ws.send(json.dumps(event_msg))
+            await self.ws.send_str(json.dumps(event_msg))
             result = await asyncio.wait_for(future, timeout=0.5)
             # logging.debug(f"RPC RES: {result}")
             return result
@@ -541,126 +542,157 @@ class Controller:
 # ---------------------------------------------------------
 
 connected_controllers = {} # websocket -> Controller
+start_time = time.time()
 
-async def process_request(connection, request):
-    logging.info(f"Req: {request.path}")
+async def handle_options(request):
+    """
+    Handle CORS Preflight / Private Network Access (PNA)
+    """
+    logging.info(f"OPTIONS request: {request.path}")
+    origin = request.headers.get("Origin", "*")
+    headers = {
+        "Access-Control-Allow-Origin": origin,
+        "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+        "Access-Control-Allow-Headers": "*",
+        "Access-Control-Allow-Private-Network": "true"
+    }
+    return web.Response(text="OK", headers=headers)
+
+async def handle_config(request):
+    """Serve Config UI"""
+    logging.debug("Serving Config UI")
+    try:
+        with open("config_ui/index.html", "r") as f:
+            content = f.read()
+        origin = request.headers.get("Origin", "*")
+        headers = {
+            "Content-Type": "text/html", 
+            "Access-Control-Allow-Origin": origin,
+            "Access-Control-Allow-Private-Network": "true"
+        }
+        return web.Response(text=content, headers=headers)
+    except Exception as e:
+        return web.Response(text=f"Error: {e}", status=500)
+
+async def handle_websocket(request):
+    """
+    Handle WebSocket connection (both WAMP and Config)
+    """
+    # Check if this is a WebSocket upgrade
+    if request.headers.get("Upgrade", "").lower() != "websocket":
+        # Check if browser visiting root -> Redirect to Config
+        accept = request.headers.get("Accept", "").lower()
+        if request.path == "/" and "text/html" in accept:
+            return web.HTTPFound("/config")
+
+        # Handle standard HTTP GET probe (xDesign expects this at /)
+        logging.info(f"HTTP GET probe from {request.remote} path={request.path}")
+        data = {"port": 8181, "version": "1.4.8.21486"}
+        origin = request.headers.get("Origin", "*")
+        
+        # PNA / CORS headers for Probe
+        headers = {
+            "Content-Type": "application/json", 
+            "Access-Control-Allow-Origin": origin,
+            "Access-Control-Allow-Private-Network": "true"
+        }
+        return web.Response(text=json.dumps(data), headers=headers)
+
+    ws = web.WebSocketResponse(protocols=("wamp", "3dx-v1"))
+    try:
+        await ws.prepare(request)
+    except Exception as e:
+        logging.error(f"WebSocket handshake failed: {e}")
+        return ws
     
-    if request.path == "/config":
-        # Serve the Config UI HTML
-        try:
-            with open("config_ui/index.html", "rb") as f:
-                content = f.read()
-            headers = Headers({"Content-Type": "text/html", "Access-Control-Allow-Origin": "*"})
-            return Response(http.HTTPStatus.OK, "OK", headers, content)
-        except Exception as e:
-            logging.error(f"Failed to serve config UI: {e}")
-            return Response(http.HTTPStatus.INTERNAL_SERVER_ERROR, "Error", Headers({}), b"500 Internal Error")
-
-    if request.path.startswith("/3dconnexion/nlproxy") or request.path == "/":
-         if "Upgrade" in request.headers and request.headers["Upgrade"].lower() == "websocket":
-             return None
-         # Identity
-         response_body = json.dumps({"port": 8181, "version": "1.4.8.21486"}).encode("utf-8")
-         headers = Headers({"Content-Type": "application/json", "Access-Control-Allow-Origin": "*"})
-         return Response(http.HTTPStatus.OK, "OK", headers, response_body)
-    return None
-
-async def handle_websocket(websocket):
+    logging.info(f"New connection: {request.remote}")
+    
     global APP_CONFIG
-    logging.info(f"New connection: {websocket.remote_address}")
     
-    # Create controller instance for this socket
-    # Metadata will be populated later
-    controller = Controller(websocket, {})
-    connected_controllers[websocket] = controller
-
+    # Create controller
+    controller = Controller(ws, {})
+    connected_controllers[ws] = controller
+    
     try:
         # 1. Send WELCOME
         session_id = _rand_id()
         # [0, sessionID, 1, ident]
-        await websocket.send(json.dumps([WAMP_WELCOME, session_id, 1, "AntigravityBridge"]))
+        await ws.send_str(json.dumps([WAMP_WELCOME, session_id, 1, "AntigravityBridge"]))
         
-        async for message in websocket:
-            try:
-                data = json.loads(message)
-                logging.debug(f"WS RX: {data}")
-                msg_type = data[0]
-                
-                if msg_type == WAMP_PREFIX:
-                    pass # Ignore
+        async for msg in ws:
+            logging.info(f"WS RAW: Type={msg.type} Data={msg.data!r}")
+            if msg.type == WSMsgType.TEXT:
+                try:
+                    data = json.loads(msg.data)
+                    logging.debug(f"WS RX: {data}")
+                    msg_type = data[0]
                     
-                elif msg_type == WAMP_CALL:
-                    # [2, callID, procURI, args]
-                    call_id = data[1]
-                    proc = data[2]
-                    args = data[3:]
-                    
-                    if "create" in proc:
-                        if args and "3dmouse" in args[0]:
-                             await websocket.send(json.dumps([WAMP_CALLRESULT, call_id, {"connexion": "mouse0"}]))
-                        elif args and "3dcontroller" in args[0]:
-                             # Extract metadata
-                             meta = args[2] if len(args) > 2 else {}
-                             controller.client_metadata = meta
-                             logging.info(f"Client Metadata: {meta}")
-                             await websocket.send(json.dumps([WAMP_CALLRESULT, call_id, {"instance": "controller0"}]))
-                    
-                    elif "update" in proc:
-                        # [..., [uri, {focus: true}]]
-                        # args might be nested list? WAMP args are list.
-                        # so args = [uri, props]
-                        await controller.handle_update(args)
-                        await websocket.send(json.dumps([WAMP_CALLRESULT, call_id, None]))
-
-                    elif "config.get" in proc:
-                        # Return current APP_CONFIG
-                        await websocket.send(json.dumps([WAMP_CALLRESULT, call_id, APP_CONFIG]))
-
-                    elif "config.set" in proc:
-                        # Update APP_CONFIG and save
-                        try:
-                            # Args[0] should be the new config dict
-                            new_conf = args[0]
-                            APP_CONFIG = new_conf
-                            
-                            with open(CONFIG_PATH, "w") as f:
-                                json.dump(APP_CONFIG, f, indent=4)
-                                
-                            logging.info("Config updated via RPC")
-                            await websocket.send(json.dumps([WAMP_CALLRESULT, call_id, "OK"]))
-                        except Exception as e:
-                            logging.error(f"Config update failed: {e}")
-                            await websocket.send(json.dumps([WAMP_CALLERROR, call_id, str(e)]))
+                    if msg_type == WAMP_PREFIX:
+                        pass 
                         
-                    else:
-                        logging.warning(f"Unknown call: {proc}")
-                        await websocket.send(json.dumps([WAMP_CALLRESULT, call_id, None]))
+                    elif msg_type == WAMP_CALL:
+                        call_id = data[1]
+                        proc = data[2]
+                        args = data[3:]
+                        
+                        if "create" in proc:
+                            if args and "3dmouse" in args[0]:
+                                 await ws.send_str(json.dumps([WAMP_CALLRESULT, call_id, {"connexion": "mouse0"}]))
+                            elif args and "3dcontroller" in args[0]:
+                                 meta = args[2] if len(args) > 2 else {}
+                                 controller.client_metadata = meta
+                                 logging.info(f"Client Metadata: {meta}")
+                                 await ws.send_str(json.dumps([WAMP_CALLRESULT, call_id, {"instance": "controller0"}]))
+                        
+                        elif "update" in proc:
+                            await controller.handle_update(args)
+                            await ws.send_str(json.dumps([WAMP_CALLRESULT, call_id, None]))
+    
+                        elif "config.get" in proc:
+                            await ws.send_str(json.dumps([WAMP_CALLRESULT, call_id, APP_CONFIG]))
+    
+                        elif "config.set" in proc:
+                            try:
+                                new_conf = args[0]
+                                APP_CONFIG = new_conf
+                                with open(CONFIG_PATH, "w") as f:
+                                    json.dump(APP_CONFIG, f, indent=4)
+                                logging.info("Config updated via RPC")
+                                await ws.send_str(json.dumps([WAMP_CALLRESULT, call_id, "OK"]))
+                            except Exception as e:
+                                logging.error(f"Config update failed: {e}")
+                                await ws.send_str(json.dumps([WAMP_CALLERROR, call_id, str(e)]))
+                            
+                        else:
+                            await ws.send_str(json.dumps([WAMP_CALLRESULT, call_id, None]))
+    
+                    elif msg_type == WAMP_SUBSCRIBE:
+                        topic = data[1]
+                        logging.info(f"Subscribed to: {topic}")
+                        controller.subscribed_topic = topic
+                        
+                    elif msg_type == WAMP_CALLRESULT:
+                        call_id = data[1]
+                        res = data[2]
+                        controller.resolve_rpc(call_id, res)
+                        
+                    elif msg_type == WAMP_CALLERROR:
+                        call_id = data[1]
+                        err = data[2]
+                        controller.resolve_rpc(call_id, None, error=err)
+                        
+                except Exception as e:
+                    logging.error(f"Error handling msg: {e}")
+            
+            elif msg.type == WSMsgType.ERROR:
+                logging.error('ws connection closed with exception %s', ws.exception())
 
-                elif msg_type == WAMP_SUBSCRIBE:
-                    topic = data[1]
-                    logging.info(f"Subscribed to: {topic}")
-                    controller.subscribed_topic = topic
-                    
-                elif msg_type == WAMP_CALLRESULT:
-                    # [3, callID, result]
-                    call_id = data[1]
-                    res = data[2]
-                    controller.resolve_rpc(call_id, res)
-                    
-                elif msg_type == WAMP_CALLERROR:
-                    # [4, callID, errorURI, desc]
-                    call_id = data[1]
-                    err = data[2]
-                    controller.resolve_rpc(call_id, None, error=err)
-                    
-            except Exception as e:
-                logging.error(f"Error handling msg: {e}")
-
-    except websockets.exceptions.ConnectionClosed:
-        pass
     finally:
-        if websocket in connected_controllers:
-            del connected_controllers[websocket]
+        if ws in connected_controllers:
+            del connected_controllers[ws]
+        logging.info("WebSocket Closed")
+
+    return ws
 
 # ---------------------------------------------------------
 # Spacenav Handler (Thread)
@@ -677,7 +709,11 @@ def spacenav_thread_func():
             connected = True
             logging.info("Connected to spacenavd.")
         except spnav.SpnavError:
-            logging.error("Failed to connect to spacenavd. Retrying in 2s...")
+            # logging.error("Failed to connect to spacenavd. Retrying in 2s...")
+            time.sleep(2)
+            continue
+        except Exception as e:
+            logging.error(f"Unexpected error connecting to spacenavd: {e}")
             time.sleep(2)
             continue
             
@@ -690,24 +726,18 @@ def spacenav_thread_func():
                         if event_queue_loop:
                              asyncio.run_coroutine_threadsafe(event_queue.put(event), event_queue_loop)
                 else:
-                    # spnav_wait_event returning None usually implies no event, 
-                    # but if connection is broken it might loop rapidly?
-                    # libspnav wrapper usually blocks or returns None. 
-                    # If we loop too fast with None, checking connection health is tricky without polling.
-                    # But usually receiving None constantly is fine if non-blocking?
-                    # Our C-wrapper uses XNextEvent or read(). If socket closes, read returns 0/Error.
-                    # We should check if socket is still valid.
-                    
-                    # For now, minimal sleep to stay CPU friendly
+                    # No event, check if connection is still alive?
+                    # Since spnav_wait_event is non-blocking or blocking depending on impl,
+                    # receiving None constantly in non-blocking mode is normal.
                     time.sleep(0.01)
-                    
-                    # Check connection health? 
-                    # If spnavd dies, wait_event might throw or return error.
-                    # We'll rely on exception or explicit check if wrapper supports it.
+
             except Exception as e:
-                logging.error(f"Spacenav error: {e}. Reconnecting...")
+                logging.error(f"Spacenav loop error: {e}. Reconnecting...")
+                try:
+                    spnav.spnav_close()
+                except:
+                    pass
                 connected = False
-                spnav.spnav_close()
                 time.sleep(1)
 
     # Should not reach here
@@ -742,7 +772,7 @@ def ensure_ssl_certs(cert_file, key_file):
         logging.warning("SSL certificates not found. Generating self-signed certificate...")
         try:
             # Generate key and cert in one go (valid for 365 days)
-            # openssl req -x509 -newkey rsa:2048 -keyout key.pem -out cert.pem -days 365 -nodes -subj "/CN=localhost"
+            # Add Subject Alternative Names for Chrome PNA compatibility
             cmd = [
                 "openssl", "req", "-x509",
                 "-newkey", "rsa:2048",
@@ -750,7 +780,8 @@ def ensure_ssl_certs(cert_file, key_file):
                 "-out", cert_file,
                 "-days", "365",
                 "-nodes",
-                "-subj", "/CN=localhost"
+                "-subj", "/CN=localhost",
+                "-addext", "subjectAltName=DNS:localhost,IP:127.0.0.1,IP:127.51.68.120"
             ]
             subprocess.check_call(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             logging.info("Self-signed certificate generated successfully.")
@@ -758,45 +789,97 @@ def ensure_ssl_certs(cert_file, key_file):
             logging.error(f"Failed to generate SSL certs: {e}")
             raise
 
-async def main():
-    global event_queue_loop
-    event_queue_loop = asyncio.get_running_loop()
-    
+
+async def on_startup(app):
     init_environment()
-    
     ensure_ssl_certs(CERT_FILE, KEY_FILE)
-
-    ssl_context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
-    try:
-        ssl_context.load_cert_chain(certfile=CERT_FILE, keyfile=KEY_FILE)
-    except FileNotFoundError:
-        logging.error(f"Cert files not found at {CERT_FILE}, {KEY_FILE}")
-        raise
-
-
-    server = await websockets.serve(
-        handle_websocket, "0.0.0.0", 8181, ssl=ssl_context,
-        process_request=process_request, subprotocols=["wamp", "3dx-v1"]
-    )
-    logging.info("Bridge Running.")
-
-    # Start broadcast consumer
-    asyncio.create_task(broadcast_loop())
     
     # Initialize Virtual Keyboard
     global vkab
     vkab = VirtualKeyboard()
     
+    # Start broadcast consumer
+    app['broadcast_task'] = asyncio.create_task(broadcast_loop())
+    
     # Start input producer thread
     loop = asyncio.get_running_loop()
     loop.run_in_executor(None, spacenav_thread_func)
+    
+    logging.info("Bridge Service Started (aiohttp)")
+
+async def capture_loop_ref(app):
+    global event_queue_loop
+    event_queue_loop = asyncio.get_running_loop()
 
 
+@web.middleware
+async def monitor_middleware(request, handler):
+    # Log valid probes/pings at DEBUG level to avoid spam, errors/others at INFO
+    if request.path == "/" or request.path == "/3dconnexion/nlproxy":
+         logging.debug(f"INCOMING: {request.method} {request.path} Origin={request.headers.get('Origin')}")
+    else:
+         logging.info(f"INCOMING: {request.method} {request.path} Origin={request.headers.get('Origin')}")
+    
+    # Handle OPTIONS globally if no specific route matched (Optional, but safe)
+    if request.method == "OPTIONS":
+        # Check if route exists? well, if handler is default 404/405, we intercept
+        # But aiohttp middleware wraps the handler.
+        pass
 
-    await server.wait_closed()
+    try:
+        response = await handler(request)
+    except web.HTTPException as ex:
+        response = ex
+    except Exception as e:
+        logging.error(f"Server Error: {e}")
+        response = web.Response(status=500, text=str(e))
+
+    # Force CORS/PNA headers
+    origin = request.headers.get("Origin", "*")
+    response.headers["Access-Control-Allow-Origin"] = origin
+    response.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
+    response.headers["Access-Control-Allow-Headers"] = "*"
+    # response.headers["Access-Control-Allow-Credentials"] = "true" # Optional, risky with *
+    response.headers["Access-Control-Allow-Private-Network"] = "true"
+    
+    return response
+
+async def on_shutdown(app):
+    logging.info("Shutting down app...")
+    if 'broadcast_task' in app:
+         app['broadcast_task'].cancel()
+         try:
+             await app['broadcast_task']
+         except asyncio.CancelledError:
+             pass
+    logging.info("Shutdown complete.")
+    # Force exit to prevent hanging on thread join or aiohttp cleanup
+    os._exit(0)
 
 if __name__ == "__main__":
-    try:
-        asyncio.run(main())
-    except KeyboardInterrupt:
-        pass
+    app = web.Application(middlewares=[monitor_middleware])
+    
+    # CORS
+    app.router.add_route("OPTIONS", "/{tail:.*}", handle_options)
+    
+    # Config UI
+    app.router.add_get("/", handle_websocket) # Root handles Probe (JSON) or Redirect
+    app.router.add_get("/config", handle_config)
+
+    
+    # WebSocket
+    app.router.add_get("/3dconnexion/nlproxy", handle_websocket)
+    
+    # Hooks
+    app.on_startup.append(capture_loop_ref) # CRITICAL: Set global loop var first
+    app.on_startup.append(on_startup)
+    app.on_shutdown.append(on_shutdown)
+    
+    # SSL
+    ssl_context = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
+    ssl_context.load_cert_chain(CERT_FILE, KEY_FILE)
+    
+    # Run
+    # Run
+    # Listen on both IPv4 and IPv6
+    web.run_app(app, host=["0.0.0.0", "::"], port=8181, ssl_context=ssl_context, access_log=None)

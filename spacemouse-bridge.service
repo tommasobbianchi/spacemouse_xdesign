@@ -5,14 +5,14 @@ After=gnome-session.target network.target
 [Service]
 Type=simple
 # Connect to the specific venv python interpreter
-ExecStart=/run/media/tommaso/App/dev/spacemouse_xdesign/spacemouse_bridge/venv/bin/python3 /run/media/tommaso/App/dev/spacemouse_xdesign/spacemouse_bridge/main.py
-WorkingDirectory=/run/media/tommaso/App/dev/spacemouse_xdesign/spacemouse_bridge
+ExecStart=/home/tommaso/spacemouse_xdesign/venv/bin/python3 /home/tommaso/spacemouse_xdesign/main.py
+WorkingDirectory=/home/tommaso/spacemouse_xdesign
 Restart=always
 RestartSec=2
 # Ensure GUI access for pystray (Tray Icon) if run as service, although tray usually runs separately
 Environment=PYTHONUNBUFFERED=1
-Environment=DISPLAY=:0
-Environment=XAUTHORITY=/run/user/1000/.mutter-Xwaylandauth.ARD7G3
+Environment=DISPLAY=:1
+Environment=XAUTHORITY=/run/user/1000/gdm/Xauthority
 
 [Install]
 WantedBy=default.target
