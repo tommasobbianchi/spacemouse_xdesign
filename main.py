@@ -57,6 +57,16 @@ def get_config_dir():
     os.makedirs(config_dir, exist_ok=True)
     return config_dir
 
+
+def resource_path(relative_path):
+    """ Get absolute path to resource, works for dev and for PyInstaller """
+    try:
+        # PyInstaller creates a temp folder and stores path in _MEIPASS
+        base_path = sys._MEIPASS
+    except Exception:
+        base_path = os.path.abspath(".")
+    return os.path.join(base_path, relative_path)
+
 CONFIG_DIR = get_config_dir()
 CONFIG_PATH = os.path.join(CONFIG_DIR, "config.json")
 CERT_FILE = os.path.join(CONFIG_DIR, "cert.pem")
@@ -562,7 +572,7 @@ async def handle_config(request):
     """Serve Config UI"""
     logging.debug("Serving Config UI")
     try:
-        with open("config_ui/index.html", "r") as f:
+        with open(resource_path("config_ui/index.html"), "r") as f:
             content = f.read()
         origin = request.headers.get("Origin", "*")
         headers = {

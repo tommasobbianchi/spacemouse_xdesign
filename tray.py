@@ -11,9 +11,17 @@ import asyncio
 import websockets
 import logging
 
+
+def resource_path(relative_path):
+    try:
+        base_path = sys._MEIPASS
+    except Exception:
+        base_path = os.path.dirname(os.path.abspath(__file__))
+    return os.path.join(base_path, relative_path)
+
 # Configuration
 BRIDGE_URL = "wss://localhost:8181"
-ICON_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets", "icon.png")
+ICON_PATH = resource_path(os.path.join("assets", "icon.png"))
 
 # Logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - Tray - %(levelname)s - %(message)s')
