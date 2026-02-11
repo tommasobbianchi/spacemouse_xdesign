@@ -36,3 +36,25 @@ During the deployment on `tommaso-behemoth-1`, several critical friction points 
 - Enjoy using the SpaceMouse!
 - (Optional) Refine "Lock Horizon" logic if needed in the future.
 - (Optional) Add more RPC calls if discovered.
+
+## Migration Audit (2026-02-11)
+
+**Location**: `/home/tommaso/projects/spacemouse_xdesign` on nativedev (100.112.35.102)
+**Git**: main, clean, **no remote**, 3 commits
+**Size**: 470M (339M .flatpak-builder cache, 56M build-dir, 47M .git, 28M videos)
+
+### Related Projects
+- `spacemouse-onshape` — Same hardware (SpaceMouse), different target CAD (Onshape vs xDesign)
+- `svg_texture` — Also targets Onshape/CAD workflows
+
+### Issues Found
+- **No git remote** — no backup
+- **.flatpak-builder/ cache is 339M** — build cache, should be gitignored/deleted
+- **build-dir/ is 56M** — build output, should be gitignored
+- **2 video files (28M)** — demo recordings in root, consider moving to docs/
+
+### Recommendations
+1. Create GitHub remote for backup
+2. Delete .flatpak-builder/ cache (339M saved) — regenerable
+3. Add build-dir/ and .flatpak-builder/ to .gitignore
+4. Consider consolidating with spacemouse-onshape if shared components exist
